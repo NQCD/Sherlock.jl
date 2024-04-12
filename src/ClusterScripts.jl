@@ -180,7 +180,8 @@ end
 
 function concatenate_results!(results_container, glob_pattern::String, queue_file::String; trajectories_key="trajectories")
     # Read in all files for a simulation queue.
-    all_files=map(SimulationFile,glob(glob_pattern))
+    glob_pattern = SimulationFile(glob_pattern)
+    all_files=map(SimulationFile,glob(glob_pattern.with_extension, glob_pattern.stem))
     progress=ProgressBar(total=length(all_files), printing_delay=1.0)
     set_description(progress, "Processing files: ")
     # Import simulation parameters
