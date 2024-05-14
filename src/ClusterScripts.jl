@@ -40,14 +40,14 @@ struct ResultsLazyLoader
         new(open_file, deepcopy(open_file["parameters"]), deepcopy(open_file["derived_quantities"]))
     end
 end
+export ResultsLazyLoader
 
 include("concat_output.jl")
-export concatenate_results!, push_nqcd_outputs!
 
 include("pmap.jl")
 export pmap_queue, merge_pmap_results
 
 include("file_based.jl")
-export build_job_queue, create_results_file, update_results_file, serialise_queue!
+export build_job_queue, create_results_file, update_results_file, update_results_file!, serialise_queue!, save!
 
 end
