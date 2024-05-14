@@ -1,10 +1,31 @@
-"""
-Struct to view into results files, loading full results only if directly accessed.
-"""
 
 
-close(rll::ResultsLazyLoader) = close(rll.file)
 
+function save!(loader::ResultsLazyLoader)
+    if any(loader.parameters .!= loader.file["parameters"])
+        old_parameters = deepcopy(loader.file["parameters"])
+        try
+            delete!(loader.file, "parameters")
+            loader.file["parameters"] = loader.parameters
+        catch
+            loader.file["parameters"] = old_parameters
+            throw
+        end
+    end
+    if any(loader.derived_quantities .!= loader.file["derived_quantities"])
+        old_derived_quantities = deepcopy(loader.file["derived_quantities"])
+        try
+            delete!(loader.file, "derived_quantities")
+            loader.file["derived_quantities"] = loader.derived_quantities
+        catch
+            loader.file["derived_quantities"] = old_derived_quantities
+            throw
+        end
+    end
+    @info "Saved updated data to $(loader.file.path)"
+end
+
+Base.show(io::IO, loader::ResultsLazyLoader) = print(io, "ResultsLazyLoader($(loader.file))")
 Base.size(loader::ResultsLazyLoader) = size(loader.parameters)
 Base.length(loader::ResultsLazyLoader) = length(loader.parameters)
 function Base.getindex(loader::ResultsLazyLoader, i::Int)
@@ -13,7 +34,20 @@ end
 function Base.getindex(loader::ResultsLazyLoader, i::AbstractUnitRange{<:Integer})
     return [loader.file["results/$(j)"] for j in i]
 end
-function Base.setindex(loader::ResultsLazyLoader, i::Int)
+function Base.setindex!(loader::ResultsLazyLoader, val, i::Int)
+    if haskey(loader.file["results"], "$(i)")
+        cache = deepcopy(loader.file["results/$(i)"])
+        try
+            delete!(loader.file, "results/$(i)")
+            loader.file["results/$(i)"] = val
+        catch
+            loader.file["results/$(i)"] = cache
+            throw
+        end
+    else
+        loader.file["results/$(i)"] = val
+    end
+end
 
 function save_as_jld2(filename, results_data)
     jldsave(filename, compress = true; results = results_data)
@@ -23,41 +57,41 @@ function convert_to_grouped_jld2(filename, results_data)
     jldopen(filename, "w"; compress=true) do file
         # Flag file as grouped
         file["grouped"] = true
-        # Store parameters to load immediately
-        file["parameters"] = Array{Dict{String, Any}}(undef, size(results_data))
+        # Need to modify out-of place.
+        parameters = Array{Dict{String, Any}}(undef, size(results_data))
         # Store results in separate groups to load as required
         indices_to_write = findall(x -> isassigned(results_data, x), eachindex(results_data))
         for i in ProgressBar(indices_to_write)
-            file["parameters"][i] = results_data[i][2]
+            parameters[i] = results_data[i][2]
             file["results/$i"] = results_data[i][1]
         end
         # Create a group to store derived quantities
+        file["parameters"] = parameters
         file["derived_quantities"] = [Dict{Symbol, Any}() for i in eachindex(file["parameters"])]
     end
 end
 
-function convert_to_grouped_jld2(filename, results_data, simulation_queue)
-    simulation_parameters = jldopen(simulation_queue)["parameters"]
+function convert_to_grouped_jld2(filename, results_data, simulation_queue; trajectories_key = "trajectories")
+    simulation_parameters = jldopen(simulation_queue, "r")["parameters"]
     jldopen(filename, "w"; compress=true) do file
         # Flag file as grouped
         file["grouped"] = true
-        # Store parameters to load immediately
-        file["parameters"] = Array{Dict{String, Any}}(undef, size(results_data))
+        # Can't in-place modify arrays with JLD2, so need to modify out-of place.
+        parameters = Array{Dict{String, Any}}(undef, size(results_data))
         # Store results in separate groups to load as required
         indices_to_write = findall(x -> isassigned(results_data, x), eachindex(results_data))
         for i in ProgressBar(indices_to_write)
-            file["parameters"][i] = results_data[i][2]
+            parameters[i] = results_data[i][2]
             file["results/$i"] = results_data[i][1]
         end
-        for idx in symdiff(indices_to_write, eachindex(file["parameters"]))
-            for idx in eachindex(simulation_parameters["parameters"])
-                if !isassigned(file.parameters, idx)
-                    file.parameters[idx] = simulation_parameters["parameters"][idx]
-                    file.parameters[idx][trajectories_key] = 0
-                end
-            end
+        for idx in symdiff(indices_to_write, eachindex(parameters))
+            @info "Writing 0 trajectories for undefined result $(idx)"
+            parameters[idx] = simulation_parameters[idx]
+            parameters[idx][trajectories_key] = 0
+            @info parameters[idx]
         end
         # Create a group to store derived quantities
+        file["parameters"] = parameters
         file["derived_quantities"] = [Dict{Symbol, Any}() for i in eachindex(file["parameters"])]
     end
 end
@@ -93,15 +127,7 @@ function create_results_file(output_filename::String, glob_pattern::String, queu
     if file_format=="jld2"
         save_as_jld2(output_filename, reshape(output_tensor, size(simulation_parameters["parameters"])))
     elseif file_format=="jld2_grouped"
-        convert_to_grouped_jld2(output_filename, reshape(output_tensor, size(simulation_parameters["parameters"])))
-        jldopen(output_filename, "r+") do file
-            for idx in eachindex(simulation_parameters["parameters"])
-                if !isassigned(file.parameters, idx)
-                    file.parameters[idx] = simulation_parameters["parameters"][idx]
-                    file.parameters[idx][trajectories_key] = 0
-                end
-            end
-        end
+        convert_to_grouped_jld2(output_filename, reshape(output_tensor, size(simulation_parameters["parameters"])), queue_file; trajectories_key=trajectories_key)
     end
     return reshape(output_tensor, size(simulation_parameters["parameters"]))
 end
@@ -117,9 +143,8 @@ function update_results_file(input_file::String, glob_pattern::String, queue_fil
     return reshape(output_tensor, size(simulation_parameters["parameters"]))
 end
 
-function update_results_file!(input_file::ResultsLazyLoader, glob_pattern::String, queue_file::String, output_file::String; trajectories_key="trajectories", file_format::String="jld2")
+function update_results_file!(input_file::ResultsLazyLoader, glob_pattern::String, queue_file::String; trajectories_key="trajectories", file_format::String="jld2")
     concatenate_results!(input_file, glob_pattern, queue_file; trajectories_key=trajectories_key)
-    close(input_file)
 end
 
 """

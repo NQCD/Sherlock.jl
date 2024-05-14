@@ -49,26 +49,28 @@ function concatenate_results!(results_container::ResultsLazyLoader, glob_pattern
     # Import simulation parameters
     simulation_parameters = jldopen(queue_file)
     # Go through each element in the input tensor and collect all jobs we have for it.
-    for index in eachindex(simulation_parameters["parameters"])
+    for index in eachindex(results_container.parameters)
         # Read job ids from results if possible to avoid reading duplicates.
-        job_ids = !haskey(results_container["results"], "$(index)") ? simulation_parameters["parameters"][index]["job_ids"] : container.parameters[index]["job_ids"]
+        job_ids = results_container.parameters[index]["job_ids"]
         to_read = findall(x -> split(x.name, "_")[end] in string.(job_ids), all_files)
         for file_index in to_read
             try
                 file_results = jldopen(all_files[file_index].path)["results"]
                 @debug "File read successfully"
                 # Move data to the output tensor
-                if !haskey(results_container["results"], "$(index)")
-                    results_container[index] = isa(file_results[1], Vector) ? file_results[1] : [file_results[1]]
+                to_append = isa(file_results[1], Vector) ? file_results[1] : [file_results[1]]
+                if !haskey(results_container.file["results"], "$(index)")
+                    results_container[index] = to_append
                     results_container.parameters[index][trajectories_key] = file_results[2][trajectories_key]
                 else
-                    append!(results_container[index], file_results[1])
+                    results_container[index] = append!(deepcopy(results_container[index]), to_append)
                     results_container.parameters[index][trajectories_key] += file_results[2][trajectories_key]
                 end
                 # Remove job id from parameters once that result has been added
                 jobid = parse(Int, split(all_files[file_index].name, "_")[end])
                 deleteat!(results_container.parameters[index]["job_ids"], findall(results_container.parameters[index]["job_ids"] .== jobid)...)
             catch e
+                throw
                 @warn "File $(all_files[file_index].name) could not be read. It may be incomplete or corrupted."
                 @debug e
                 continue
@@ -76,10 +78,12 @@ function concatenate_results!(results_container::ResultsLazyLoader, glob_pattern
             update(progress)
         end
         # Trajectory completeness check
-        if !haskey(results_container["results"], "$(index)") || results_container.parameters[index]["total_trajectories"] != results_container.parameters[index]["trajectories"]
+        if !haskey(results_container.file["results"], "$(index)") || results_container.parameters[index]["total_$(trajectories_key)"] != results_container.parameters[index][trajectories_key]
             @info "Simulation results are incomplete or oversubscribed in results[$(index)]. Make sure you have run all sub-jobs. "
         end
     end
+    # Save updated parameters.
+    @time "Saving:" save!(results_container)
 end
 
 """
