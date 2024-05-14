@@ -25,23 +25,29 @@ struct SimulationFile
     end
 end
 
+"""
+Struct to view into results files, loading full results only if directly accessed.
+
+If parameters or derived_quantities are modified, remember to call `save!()` to update the file.
+Modifications to results outside those made by `concatenate_results!` will not be saved.
+"""
 struct ResultsLazyLoader
     file
     parameters::AbstractArray
     derived_quantities::AbstractArray
     function ResultsLazyLoader(file::String)
-        open_file = jldopen(file, "r+")
-        new(open_file, open_file["parameters"], open_file["derived_quantities"])
+        open_file = isfile(file) ? jldopen(file, "a+") : throw(ArgumentError("File $file does not exist."))
+        new(open_file, deepcopy(open_file["parameters"]), deepcopy(open_file["derived_quantities"]))
     end
 end
+export ResultsLazyLoader
 
 include("concat_output.jl")
-export concatenate_results!, push_nqcd_outputs!
 
 include("pmap.jl")
 export pmap_queue, merge_pmap_results
 
 include("file_based.jl")
-export build_job_queue, create_results_file, update_results_file, serialise_queue!
+export build_job_queue, create_results_file, update_results_file, update_results_file!, serialise_queue!, save!
 
 end
