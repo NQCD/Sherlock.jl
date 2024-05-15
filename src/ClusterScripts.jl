@@ -36,7 +36,7 @@ struct ResultsLazyLoader
     parameters::AbstractArray
     derived_quantities::AbstractArray
     function ResultsLazyLoader(file::String)
-        open_file = isfile(file) ? jldopen(file, "a+") : throw(ArgumentError("File $file does not exist."))
+        open_file = isfile(file) ? jldopen(file, "a+", compress=true) : throw(ArgumentError("File $file does not exist."))
         new(open_file, deepcopy(open_file["parameters"]), deepcopy(open_file["derived_quantities"]))
     end
 end
