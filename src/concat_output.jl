@@ -52,23 +52,23 @@ function concatenate_results!(results_container::ResultsLazyLoader, glob_pattern
     for index in eachindex(results_container.parameters)
         # Read job ids from results if possible to avoid reading duplicates.
         job_ids = results_container.parameters[index]["job_ids"]
+        data_to_append = []
+        trajectories_read = 0
+        ids_read = Int[]
         to_read = findall(x -> split(x.name, "_")[end] in string.(job_ids), all_files)
+        sizehint!(data_to_append, length(to_read))
+        sizehint!(ids_read, length(to_read))
         for file_index in to_read
             try
                 file_results = jldopen(all_files[file_index].path)["results"]
-                @debug "File read successfully"
-                # Move data to the output tensor
-                to_append = isa(file_results[1], Vector) ? file_results[1] : [file_results[1]]
-                if !haskey(results_container.file["results"], "$(index)")
-                    results_container[index] = to_append
-                    results_container.parameters[index][trajectories_key] = file_results[2][trajectories_key]
-                else
-                    results_container[index] = append!(deepcopy(results_container[index]), to_append)
-                    results_container.parameters[index][trajectories_key] += file_results[2][trajectories_key]
-                end
-                # Remove job id from parameters once that result has been added
-                jobid = parse(Int, split(all_files[file_index].name, "_")[end])
-                deleteat!(results_container.parameters[index]["job_ids"], findall(results_container.parameters[index]["job_ids"] .== jobid)...)
+                # Put data into vector if not already
+                file_data = isa(file_results[1], Vector) ? file_results[1] : [file_results[1]]
+                # Move to cache
+                append!(data_to_append, file_data)
+                # Update trajectory count
+                trajectories_read += file_results[2][trajectories_key]
+                # Update job ids processed
+                push!(ids_read, parse(Int, split(all_files[file_index].name, "_")[end]))
             catch e
                 throw
                 @warn "File $(all_files[file_index].name) could not be read. It may be incomplete or corrupted."
@@ -76,6 +76,15 @@ function concatenate_results!(results_container::ResultsLazyLoader, glob_pattern
                 continue
             end
             update(progress)
+        end
+        if length(data_to_append) > 0
+            if !haskey(results_container.file["results"], "$(index)")
+                results_container[index] = data_to_append
+            else
+                results_container[index] = append!(deepcopy(results_container[index]), data_to_append)
+            end
+            results_container.parameters[index][trajectories_key] += trajectories_read
+            setdiff!(results_container.parameters[index]["job_ids"], ids_read)
         end
         # Trajectory completeness check
         if !haskey(results_container.file["results"], "$(index)") || results_container.parameters[index]["total_$(trajectories_key)"] != results_container.parameters[index][trajectories_key]
