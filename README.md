@@ -1,15 +1,14 @@
-# ClusterScripts
+# Sherlock.jl
 
 [![Build Status](https://github.com/alexsp32/ClusterScripts.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/alexsp32/ClusterScripts.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-This package contains functions to more efficiently distribute resources to MD simulations with `NQCDynamics.jl` on HPC clusters, including the ability to initialise simulations with all possible combinations of multiple variables. This can be useful to compare results across a range of initial parameters, or with a range of different models. 
+Parameter dictionary generation like in [DrWatson.jl](https://github.com/JuliaDynamics/DrWatson.jl), but with additional options for different parallelisation workflows. Since it does more work than Dr. Watson, Sherlock seemed like an obvious name. 
 
-
-While NQCDynamics.jl provides the tools necessary to run ensemble simulations, and a means of parallelisation through SciML’s EnsembleAlgorithms, compatibility of different models with certain EnsembleAlgorithms isn’t guaranteed, nor will there necessarily be a notable gain in performance. ClusterScripts takes a different approach to parallelisation, instead running multiple instances of NQCD in parallel, allowing for more trajectories to be run simultaneously, which is advantageous for models not taking full advantage of multithreading. 
+While NQCDynamics.jl provides the tools necessary to run ensemble simulations, and a means of parallelisation through SciML’s EnsembleAlgorithms, compatibility of different models with certain EnsembleAlgorithms isn’t guaranteed, nor will there necessarily be a notable gain in performance. Sherlock takes a different approach to parallelisation, instead running multiple instances of NQCD in parallel, allowing for more trajectories to be run simultaneously, which is advantageous for models not taking full advantage of multithreading. 
 
 To maximise compatibility with (almost) any simulation workflow, it is up to you as a user to implement the necessary functions acting on the jobs dispatched by ClusterScripts. 
 
-## The ClusterScripts simulation workflow
+## The Sherlock simulation workflow
 All the information necessary to run a simulation is contained in Dictionaries. 
 `fixed_parameters` contains all keys common to every simulation. 
 `variables` should contain variable keys with the desired vector of values. 
@@ -76,5 +75,5 @@ In cases where models use multithreading properly, “jobs” are still split ac
 > end
 > ```
 
-## Tutorial: Using ClusterScripts to speed up statistical sampling
+## Tutorial: Using Sherlock to speed up statistical sampling
 
