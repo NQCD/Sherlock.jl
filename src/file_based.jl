@@ -4,7 +4,10 @@
 """
     save!(loader::ResultsLazyLoader)
 
+**Warning: Don't run this on an unstable system or network connection to prevent data loss!**
+
 Updates the stored parameters and derived quantities inside a grouped JLD2 file.
+
 Run this function after modifying `loader.parameters` or `loader.derived_quantities` to save the changes.
 """
 function save!(loader::ResultsLazyLoader)
@@ -177,7 +180,7 @@ function update_results_file(input_file::String, glob_pattern::String, queue_fil
     output_tensor = jldopen(input_file)["results"]
     concatenate_results!(output_tensor, glob_pattern, queue_file; trajectories_key=trajectories_key)
     if file_format == "jld2"
-        save_as_jld2(output_filename, output_tensor)
+        save_as_jld2(output_file, output_tensor)
     end
     return reshape(output_tensor, size(simulation_parameters["parameters"]))
 end
